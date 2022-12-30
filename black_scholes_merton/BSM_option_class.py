@@ -37,12 +37,12 @@ class BSMOptionValuation:
         assert T >= 0, 'time to maturity cannot be less than zero'
         assert div_yield >= 0, 'dividend yield cannot be less than zero'
 
-        self.S0 = float(S0)
-        self.K = float(K)
-        self.T = float(T)
-        self.r = float(r)
-        self.sigma = float(sigma)
-        self.div_yield = float(div_yield)
+        self.S0 = S0
+        self.K = K
+        self.T = T
+        self.r = r
+        self.sigma = sigma
+        self.div_yield = div_yield
 
         self._d1, self._d2 = self._calculate_d1_d2()
         self._d3 = None
@@ -63,13 +63,20 @@ class BSMOptionValuation:
         """
         :return: call option value
         """
-        if observed_put_price is None:
-            call_value = (self.S0 * exp(-self.div_yield * self.T) * stats.norm.cdf(self._d1, 0.0, 1.0) - self.K * exp(
-                -self.r * self.T) * stats.norm.cdf(self._d2, 0.0, 1.0))
-        else:
-            call_value = observed_put_price + exp(-self.div_yield * self.T) * self.S0 - exp(-self.r * self.T) * self.K
-
-        return call_value
+        return (
+            (
+                self.S0
+                * exp(-self.div_yield * self.T)
+                * stats.norm.cdf(self._d1, 0.0, 1.0)
+                - self.K
+                * exp(-self.r * self.T)
+                * stats.norm.cdf(self._d2, 0.0, 1.0)
+            )
+            if observed_put_price is None
+            else observed_put_price
+            + exp(-self.div_yield * self.T) * self.S0
+            - exp(-self.r * self.T) * self.K
+        )
 
     def delta(self) -> Tuple[float, float]:
         """
@@ -86,9 +93,11 @@ class BSMOptionValuation:
         Gamma measures the change in delta when the stock price changes
         :return: gamma of the option
         """
-        gamma = exp(-self.div_yield * self.T) * stats.norm.pdf(self._d1) / (self.S0 * self.sigma * sqrt(self.T))
-
-        return gamma
+        return (
+            exp(-self.div_yield * self.T)
+            * stats.norm.pdf(self._d1)
+            / (self.S0 * self.sigma * sqrt(self.T))
+        )
 
     def theta(self) -> Tuple[float, float]:
         """
@@ -117,9 +126,12 @@ class BSMOptionValuation:
         in the volatility. This requires dividing the vega formula above by 100.
         :return: vega of option
         """
-        vega = self.S0 * exp(-self.div_yield * self.T) * stats.norm.pdf(self._d1, 0.0, 1.0) * sqrt(self.T)
-
-        return vega
+        return (
+            self.S0
+            * exp(-self.div_yield * self.T)
+            * stats.norm.pdf(self._d1, 0.0, 1.0)
+            * sqrt(self.T)
+        )
 
     def rho(self) -> Tuple[float, float]:
         """
@@ -183,12 +195,15 @@ class BSMOptionValuation:
 
         :return: put option value
         """
-        if observed_call_price is None:
-            put_value = self.call_value() + exp(-self.r * self.T) * self.K - exp(-self.div_yield * self.T) * self.S0
-        else:
-            put_value = observed_call_price + exp(-self.r * self.T) * self.K - exp(-self.div_yield * self.T) * self.S0
-
-        return put_value
+        return (
+            self.call_value()
+            + exp(-self.r * self.T) * self.K
+            - exp(-self.div_yield * self.T) * self.S0
+            if observed_call_price is None
+            else observed_call_price
+            + exp(-self.r * self.T) * self.K
+            - exp(-self.div_yield * self.T) * self.S0
+        )
 
     def lookback_BSM(self, option_type: str, max_share_price: float, min_share_price: float) -> float:
         """
@@ -205,15 +220,15 @@ class BSMOptionValuation:
         :return: value of lookback option
         """
 
-        assert option_type == "call" or option_type == "put"
+        assert option_type in {"call", "put"}
 
         if option_type == "call":
             self.w = 1
-            self.s_bar = float(min_share_price)
+            self.s_bar = min_share_price
 
         elif option_type == "put":
             self.w = -1
-            self.s_bar = float(max_share_price)
+            self.s_bar = max_share_price
 
         self._d5 = (log(self.K / self.s_bar) + (self.r - self.div_yield + 0.5 * (self.sigma ** 2)) * self.T) / (
                 self.sigma * sqrt(self.T))
@@ -253,7 +268,7 @@ class BSMOptionValuation:
         -------
         option_value: (float) option value
         """
-        assert option_type == "call" or option_type == "put", "option type must be either call or put"
+        assert option_type in {"call", "put"}, "option type must be either call or put"
 
         lam = avg_num_jumps  # Expected number of events occurring in a fixed-time interval (T)
 
@@ -299,7 +314,7 @@ class BSMOptionValuation:
         ----------
         option_type: call or put
         """
-        assert option_type == "call" or option_type == "put", 'option type must be either call or put'
+        assert option_type in {"call", "put"}, 'option type must be either call or put'
         if option_type == "call":
             return exp(-self.r * self.T) * stats.norm.cdf(self._d2)
         else:
@@ -312,7 +327,7 @@ class BSMOptionValuation:
         ----------
         option_type: call or put
         """
-        assert option_type == "call" or option_type == "put", 'option type must be either call or put'
+        assert option_type in {"call", "put"}, 'option type must be either call or put'
         if option_type == "call":
             return exp(-self.div_yield * self.T) * self.S0 * stats.norm.cdf(self._d1)
         else:
@@ -340,24 +355,38 @@ class BSMOptionValuation:
         return self.deferred_up_rebate(H=H) - self._cash_up_and_in_put(H=H)
 
     def _cash_up_and_in_put(self, H: float) -> float:
-        if H >= self.K:
-            option_price = exp(-self.r * self.T) * (H / self.S0) ** (
-                    2 * (self.r - self.div_yield) / self.sigma ** 2 - 1) * stats.norm.cdf(-self._d4)
-        else:
-            option_price = exp(-self.r * self.T) * (
-                    stats.norm.cdf(-self._d2) - stats.norm.cdf(-self._d6) + (H / self.S0) ** (
-                    2 * (self.r - self.div_yield) / self.sigma ** 2 - 1) * stats.norm.cdf(-self._d8))
-        return option_price
+        return (
+            exp(-self.r * self.T)
+            * (H / self.S0)
+            ** (2 * (self.r - self.div_yield) / self.sigma**2 - 1)
+            * stats.norm.cdf(-self._d4)
+            if H >= self.K
+            else exp(-self.r * self.T)
+            * (
+                stats.norm.cdf(-self._d2)
+                - stats.norm.cdf(-self._d6)
+                + (H / self.S0)
+                ** (2 * (self.r - self.div_yield) / self.sigma**2 - 1)
+                * stats.norm.cdf(-self._d8)
+            )
+        )
 
     def _cash_down_and_in_call(self, H: float) -> float:
-        if H <= self.K:
-            option_price = exp(-self.r * self.T) * (H / self.S0) ** (
-                    2 * (self.r - self.div_yield) / self.sigma ** 2 - 1) * stats.norm.cdf(self._d4)
-        else:
-            option_price = exp(-self.r * self.T) * (
-                    stats.norm.cdf(self._d2) - stats.norm.cdf(self._d6) + (H / self.S0) ** (
-                    2 * (self.r - self.div_yield) / self.sigma ** 2 - 1) * stats.norm.cdf(self._d8))
-        return option_price
+        return (
+            exp(-self.r * self.T)
+            * (H / self.S0)
+            ** (2 * (self.r - self.div_yield) / self.sigma**2 - 1)
+            * stats.norm.cdf(self._d4)
+            if H <= self.K
+            else exp(-self.r * self.T)
+            * (
+                stats.norm.cdf(self._d2)
+                - stats.norm.cdf(self._d6)
+                + (H / self.S0)
+                ** (2 * (self.r - self.div_yield) / self.sigma**2 - 1)
+                * stats.norm.cdf(self._d8)
+            )
+        )
 
     def _cash_down_and_in_put(self, H) -> float:
         return self.deferred_down_rebate(H=H) - self._cash_down_and_in_call(H=H)
@@ -382,11 +411,15 @@ class BSMOptionValuation:
         -------
 
         """
-        assert option_type == "call" or option_type == "put", 'option type must be either call or put'
-        assert barrier_type == "knock-in" or barrier_type == "knock-out", \
-            'barrier type must be either knock-in or knock-out'
-        assert barrier_direction == "up" or barrier_direction == "down", \
-            'barrier direction must be either up or down'
+        assert option_type in {"call", "put"}, 'option type must be either call or put'
+        assert barrier_type in {
+            "knock-in",
+            "knock-out",
+        }, 'barrier type must be either knock-in or knock-out'
+        assert barrier_direction in {
+            "up",
+            "down",
+        }, 'barrier direction must be either up or down'
 
         option_price = 0
         self._d3 = (log(barrier_price ** 2 / (self.S0 * self.K)) + (
@@ -405,33 +438,35 @@ class BSMOptionValuation:
 
         if option_type == "call":
             if barrier_type == "knock-in":
-                if barrier_direction == "down":
-                    if self.S0 <= barrier_price:
-                        barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
-                        option_price = self.call_value()
-                    else:
-                        option_price = self._cash_down_and_in_call(H=barrier_price)
+                if (
+                    barrier_direction == "down"
+                    and self.S0 <= barrier_price
+                    or barrier_direction != "down"
+                    and barrier_direction == "up"
+                    and self.S0 >= barrier_price
+                ):
+                    barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
+                    option_price = self.call_value()
+                elif barrier_direction == "down":
+                    option_price = self._cash_down_and_in_call(H=barrier_price)
                 elif barrier_direction == "up":
-                    if self.S0 >= barrier_price:
-                        barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
-                        option_price = self.call_value()
-                    else:
-                        option_price = self._cash_up_and_in_call(H=barrier_price)
+                    option_price = self._cash_up_and_in_call(H=barrier_price)
             elif barrier_type == "knock-out":
-                if barrier_direction == "down":
-                    if self.S0 <= barrier_price:
-                        barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
-                        option_price = 0
-                    else:
-                        option_price = self.cash_or_nothing(option_type="call") - self._cash_down_and_in_call(
-                            H=barrier_price)
+                if (
+                    barrier_direction == "down"
+                    and self.S0 <= barrier_price
+                    or barrier_direction != "down"
+                    and barrier_direction == "up"
+                    and self.S0 >= barrier_price
+                ):
+                    barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
+                    option_price = 0
+                elif barrier_direction == "down":
+                    option_price = self.cash_or_nothing(option_type="call") - self._cash_down_and_in_call(
+                        H=barrier_price)
                 elif barrier_direction == "up":
-                    if self.S0 >= barrier_price:
-                        barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
-                        option_price = 0
-                    else:
-                        option_price = self.cash_or_nothing(option_type="call") - self._cash_up_and_in_call(
-                            H=barrier_price)
+                    option_price = self.cash_or_nothing(option_type="call") - self._cash_up_and_in_call(
+                        H=barrier_price)
 
         elif option_type == "put":
             if barrier_type == "knock-in":
@@ -448,25 +483,28 @@ class BSMOptionValuation:
                     else:
                         option_price = self._cash_up_and_in_put(H=barrier_price)
             elif barrier_type == "knock-out":
-                if barrier_direction == "down":
-                    if self.S0 <= barrier_price:
-                        barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
-                        option_price = 0
-                    else:
-                        option_price = self.cash_or_nothing(option_type="put") - self._cash_down_and_in_put(
-                            H=barrier_price)
+                if (
+                    barrier_direction == "down"
+                    and self.S0 <= barrier_price
+                    or barrier_direction != "down"
+                    and barrier_direction == "up"
+                    and self.S0 >= barrier_price
+                ):
+                    barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
+                    option_price = 0
+                elif barrier_direction == "down":
+                    option_price = self.cash_or_nothing(option_type="put") - self._cash_down_and_in_put(
+                        H=barrier_price)
                 elif barrier_direction == "up":
-                    if self.S0 >= barrier_price:
-                        barrier_warning(option_type, barrier_type, barrier_direction, barrier_price, self.S0)
-                        option_price = 0
-                    else:
-                        option_price = self.cash_or_nothing(option_type="put") - self._cash_up_and_in_put(
-                            H=barrier_price)
+                    option_price = self.cash_or_nothing(option_type="put") - self._cash_up_and_in_put(
+                        H=barrier_price)
         return option_price
 
     def barrier_condition_risk_neutral_probability(self, barrier_direction: str, barrier_price: float) -> float:
-        assert barrier_direction == "up" or barrier_direction == "down", \
-            'barrier direction must be either up or down'
+        assert barrier_direction in {
+            "up",
+            "down",
+        }, 'barrier direction must be either up or down'
 
         if barrier_direction == "down":
             return exp(self.r * self.T) * self.deferred_down_rebate(H=barrier_price)
@@ -525,23 +563,31 @@ class GarmanKohlhagenForex(BSMOptionValuation):
         """
         :return: call option value
         """
-        if empirical_put_price is None:
-            call_value = (self.S0 * exp(- self.rf * self.T) * stats.norm.cdf(self.d1, 0.0, 1.0) - self.K * exp(
-                - self.rd * self.T) * stats.norm.cdf(self.d2, 0.0, 1.0))
-        else:
-            call_value = empirical_put_price + exp(-self.div_yield * self.T) * self.S0 - exp(-self.r * self.T) * self.K
-
-        return call_value
+        return (
+            (
+                self.S0
+                * exp(-self.rf * self.T)
+                * stats.norm.cdf(self.d1, 0.0, 1.0)
+                - self.K
+                * exp(-self.rd * self.T)
+                * stats.norm.cdf(self.d2, 0.0, 1.0)
+            )
+            if empirical_put_price is None
+            else empirical_put_price
+            + exp(-self.div_yield * self.T) * self.S0
+            - exp(-self.r * self.T) * self.K
+        )
 
     def put_value(self, empirical_call_price=None):
         """
         Use put call parity (incl. continuous dividend) to calculate the put option value
         :return: put option value
         """
-        if empirical_call_price is None:
-            put_value = self.K * exp(- self.rd * self.T) * stats.norm.cdf(- self.d2, 0.0, 1.0) - self.S0 * exp(
-                - self.rf * self.T) * stats.norm.cdf(- self.d1, 0.0, 1.0)
-        else:
-            put_value = empirical_call_price + exp(-self.r * self.T) * self.K - exp(-self.div_yield * self.T) * self.S0
-
-        return put_value
+        return (
+            self.K * exp(-self.rd * self.T) * stats.norm.cdf(-self.d2, 0.0, 1.0)
+            - self.S0 * exp(-self.rf * self.T) * stats.norm.cdf(-self.d1, 0.0, 1.0)
+            if empirical_call_price is None
+            else empirical_call_price
+            + exp(-self.r * self.T) * self.K
+            - exp(-self.div_yield * self.T) * self.S0
+        )

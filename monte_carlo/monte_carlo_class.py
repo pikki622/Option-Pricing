@@ -35,13 +35,13 @@ class MonteCarloOptionPricing:
         assert no_of_slices >= 0, 'no of slices per year cannot be less than zero'
         assert simulation_rounds >= 0, 'simulation rounds cannot be less than zero'
 
-        self.S0 = float(S0)
-        self.K = float(K)
-        self.T = float(T)
-        self.div_yield = float(div_yield)
+        self.S0 = S0
+        self.K = K
+        self.T = T
+        self.div_yield = div_yield
 
-        self.no_of_slices = int(no_of_slices)
-        self.simulation_rounds = int(simulation_rounds)
+        self.no_of_slices = no_of_slices
+        self.simulation_rounds = simulation_rounds
 
         self._dt = self.T / self.no_of_slices
 
@@ -183,8 +183,7 @@ class MonteCarloOptionPricing:
 
         return self.stock_price_expectation
 
-    def stock_price_simulation_with_poisson_jump(self, jump_alpha: float, jump_std: float, poisson_lambda: float) -> \
-            Tuple[np.ndarray, float]:
+    def stock_price_simulation_with_poisson_jump(self, jump_alpha: float, jump_std: float, poisson_lambda: float) -> Tuple[np.ndarray, float]:
         """
         jump diffusion model
         Parameters
@@ -211,9 +210,7 @@ class MonteCarloOptionPricing:
             self.sum_w = []
             self.m = np.random.poisson(lam=poisson_lambda, size=self.simulation_rounds)
 
-            for j in self.m:
-                self.sum_w.append(np.sum(np.random.standard_normal(j)))
-
+            self.sum_w.extend(np.sum(np.random.standard_normal(j)) for j in self.m)
             self.poisson_jump_factor = np.exp(
                 self.m * (jump_alpha - 0.5 * jump_std ** 2) + jump_std * np.array(self.sum_w)
             )
@@ -273,9 +270,12 @@ class MonteCarloOptionPricing:
         return self.put_value
 
     def asian_avg_price_option(self, avg_method: str = 'arithmetic', option_type: str = 'call') -> float:
-        assert option_type == 'call' or option_type == 'put', 'option_type must be either call or put'
+        assert option_type in {'call', 'put'}, 'option_type must be either call or put'
         assert len(self.terminal_prices) != 0, 'Please simulate the stock price first'
-        assert avg_method == 'arithmetic' or avg_method == 'geometric', 'arithmetic or geometric average?'
+        assert avg_method in {
+            'arithmetic',
+            'geometric',
+        }, 'arithmetic or geometric average?'
 
         average_prices = np.average(self.price_array, axis=1)
 
@@ -309,7 +309,7 @@ class MonteCarloOptionPricing:
         :param poly_degree: x^n, default = 2
         :param option_type: call or put
         """
-        assert option_type == 'call' or option_type == 'put', 'option_type must be either call or put'
+        assert option_type in {'call', 'put'}, 'option_type must be either call or put'
         assert len(self.terminal_prices) != 0, 'Please simulate the stock price first'
 
         if option_type == 'call':
@@ -367,31 +367,35 @@ class MonteCarloOptionPricing:
 
     def barrier_option(self, option_type: str, barrier_price: float, barrier_type: str, barrier_direction: str,
                        parisian_barrier_days: int or None = None) -> float:
-        assert option_type == "call" or option_type == "put", 'option type must be either call or put'
-        assert barrier_type == "knock-in" or barrier_type == "knock-out", \
-            'barrier type must be either knock-in or knock-out'
-        assert barrier_direction == "up" or barrier_direction == "down", \
-            'barrier direction must be either up or down'
-        if barrier_direction == "up":
-            barrier_check = np.where(self.price_array >= barrier_price, 1, 0)
+        assert option_type in {"call", "put"}, 'option type must be either call or put'
+        assert barrier_type in {
+            "knock-in",
+            "knock-out",
+        }, 'barrier type must be either knock-in or knock-out'
+        assert barrier_direction in {
+            "up",
+            "down",
+        }, 'barrier direction must be either up or down'
+        if barrier_direction == "down":
+            barrier_check = np.where(self.price_array <= barrier_price, 1, 0)
 
             if parisian_barrier_days is not None:
                 days_to_slices = int(parisian_barrier_days * self.no_of_slices / (self.T * 252))
                 parisian_barrier_check = np.zeros((self.simulation_rounds, self.no_of_slices - days_to_slices))
-                for i in range(0, self.no_of_slices - days_to_slices):
+                for i in range(self.no_of_slices - days_to_slices):
                     parisian_barrier_check[:, i] = np.where(
                         np.sum(barrier_check[:, i:i + days_to_slices], axis=1) >= parisian_barrier_days, 1, 0
                     )
 
                 barrier_check = parisian_barrier_check
 
-        elif barrier_direction == "down":
-            barrier_check = np.where(self.price_array <= barrier_price, 1, 0)
+        elif barrier_direction == "up":
+            barrier_check = np.where(self.price_array >= barrier_price, 1, 0)
 
             if parisian_barrier_days is not None:
                 days_to_slices = int(parisian_barrier_days * self.no_of_slices / (self.T * 252))
                 parisian_barrier_check = np.zeros((self.simulation_rounds, self.no_of_slices - days_to_slices))
-                for i in range(0, self.no_of_slices - days_to_slices):
+                for i in range(self.no_of_slices - days_to_slices):
                     parisian_barrier_check[:, i] = np.where(
                         np.sum(barrier_check[:, i:i + days_to_slices], axis=1) >= parisian_barrier_days, 1, 0
                     )
@@ -424,7 +428,7 @@ class MonteCarloOptionPricing:
 
     def look_back_european(self, option_type: str = 'call') -> float:
         assert len(self.terminal_prices) != 0, 'Please simulate the stock price first'
-        assert option_type == 'call' or option_type == 'put', 'option_type must be either call or put'
+        assert option_type in {'call', 'put'}, 'option_type must be either call or put'
 
         self.max_price = np.max(self.price_array, axis=1)
         self.min_price = np.min(self.price_array, axis=1)

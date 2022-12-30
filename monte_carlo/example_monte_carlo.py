@@ -20,7 +20,7 @@ barrier_price = 80.0  # barrier level for barrier options
 parisian_barrier_days = 21  # no.of consecutive trading days required for parisian options
 
 # optional parameter
-simulation_rounds = int(10000)  # For monte carlo simulation, a large number of simulations required
+simulation_rounds = 10000
 
 # initialize instance
 MC = MonteCarloOptionPricing(S0=S0,
